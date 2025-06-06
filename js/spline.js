@@ -5,14 +5,21 @@ export class SplineRenderer {
         this.points = [];
         this.controlPoints = [];
         this.selectedPointIndex = -1;
+        this.hoveredPointIndex = -1;
         
         // Visual settings
-        this.pointRadius = 8;
+        this.pointRadius = 6;
         this.controlPointRadius = 4;
         this.splineColor = '#60a5fa';
         this.pointColor = '#fbbf24';
+        this.pointHoverColor = '#f59e0b';
         this.controlLineColor = 'rgba(251, 191, 36, 0.5)';
         this.selectedPointColor = '#ef4444';
+        this.pointStrokeColor = '#ffffff';
+        this.pointStrokeWidth = 2;
+        
+        // Minimum points required for a valid spline
+        this.minPoints = 2;
     }
     
     addPoint(x, y) {
@@ -21,10 +28,27 @@ export class SplineRenderer {
     }
     
     removePoint(index) {
-        if (index >= 0 && index < this.points.length) {
+        if (index >= 0 && index < this.points.length && this.canRemovePoint()) {
             this.points.splice(index, 1);
+            
+            // Adjust selected point index if necessary
+            if (this.selectedPointIndex === index) {
+                this.selectedPointIndex = -1;
+            } else if (this.selectedPointIndex > index) {
+                this.selectedPointIndex--;
+            }
+            
+            // Adjust hovered point index if necessary
+            if (this.hoveredPointIndex === index) {
+                this.hoveredPointIndex = -1;
+            } else if (this.hoveredPointIndex > index) {
+                this.hoveredPointIndex--;
+            }
+            
             this.updateControlPoints();
+            return true;
         }
+        return false;
     }
     
     updatePoint(index, x, y) {
@@ -45,6 +69,30 @@ export class SplineRenderer {
         return -1;
     }
     
+    setHoveredPoint(index) {
+        this.hoveredPointIndex = index;
+    }
+    
+    setSelectedPoint(index) {
+        this.selectedPointIndex = index;
+    }
+    
+    getSelectedPoint() {
+        return this.selectedPointIndex;
+    }
+    
+    getHoveredPoint() {
+        return this.hoveredPointIndex;
+    }
+    
+    canRemovePoint() {
+        return this.points.length > this.minPoints;
+    }
+    
+    isValidSpline() {
+        return this.points.length >= this.minPoints;
+    }
+    
     getPoints() {
         return [...this.points];
     }
@@ -57,6 +105,7 @@ export class SplineRenderer {
         this.points = [];
         this.controlPoints = [];
         this.selectedPointIndex = -1;
+        this.hoveredPointIndex = -1;
     }
     
     updateControlPoints() {
@@ -125,13 +174,15 @@ export class SplineRenderer {
     render() {
         if (this.points.length === 0) return;
         
-        // Draw spline curve
-        this.drawSpline();
+        // Only draw spline curve if we have enough points
+        if (this.isValidSpline()) {
+            this.drawSpline();
+        }
         
         // Draw control lines (optional, for debugging)
         // this.drawControlLines();
         
-        // Draw points
+        // Always draw points (even if spline is not valid)
         this.drawPoints();
     }
     
@@ -208,30 +259,52 @@ export class SplineRenderer {
         for (let i = 0; i < this.points.length; i++) {
             const point = this.points[i];
             const isSelected = i === this.selectedPointIndex;
+            const isHovered = i === this.hoveredPointIndex;
             
             // Draw point shadow
             this.ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
             this.ctx.beginPath();
-            this.ctx.arc(point.x + 2, point.y + 2, this.pointRadius, 0, Math.PI * 2);
+            this.ctx.arc(point.x + 1, point.y + 1, this.pointRadius, 0, Math.PI * 2);
             this.ctx.fill();
             
-            // Draw point
-            this.ctx.fillStyle = isSelected ? this.selectedPointColor : this.pointColor;
+            // Determine point color based on state
+            let pointColor = this.pointColor;
+            if (isSelected) {
+                pointColor = this.selectedPointColor;
+            } else if (isHovered) {
+                pointColor = this.pointHoverColor;
+            }
+            
+            // Draw point fill
+            this.ctx.fillStyle = pointColor;
             this.ctx.beginPath();
             this.ctx.arc(point.x, point.y, this.pointRadius, 0, Math.PI * 2);
             this.ctx.fill();
             
             // Draw point border
-            this.ctx.strokeStyle = '#ffffff';
-            this.ctx.lineWidth = 2;
+            this.ctx.strokeStyle = this.pointStrokeColor;
+            this.ctx.lineWidth = this.pointStrokeWidth;
             this.ctx.stroke();
             
             // Draw point number
             this.ctx.fillStyle = '#000000';
-            this.ctx.font = '12px Arial';
+            this.ctx.font = 'bold 10px Arial';
             this.ctx.textAlign = 'center';
             this.ctx.textBaseline = 'middle';
             this.ctx.fillText(i.toString(), point.x, point.y);
+            
+            // Add a subtle glow effect for selected points
+            if (isSelected) {
+                this.ctx.shadowColor = this.selectedPointColor;
+                this.ctx.shadowBlur = 8;
+                this.ctx.beginPath();
+                this.ctx.arc(point.x, point.y, this.pointRadius + 2, 0, Math.PI * 2);
+                this.ctx.strokeStyle = this.selectedPointColor;
+                this.ctx.lineWidth = 1;
+                this.ctx.stroke();
+                this.ctx.shadowColor = 'transparent';
+                this.ctx.shadowBlur = 0;
+            }
         }
     }
     

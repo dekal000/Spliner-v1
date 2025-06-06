@@ -71,14 +71,45 @@ export class UIManager {
                         this.showNotification('Undo not yet implemented');
                         break;
                 }
-            }
-            
-            // ESC key to clear selection
-            if (e.key === 'Escape') {
-                // TODO: Clear any active selections
-                this.showNotification('Selection cleared');
+            } else {
+                // Handle non-modifier key shortcuts
+                switch (e.key) {
+                    case 'Delete':
+                    case 'Backspace':
+                        e.preventDefault();
+                        // Delete selected point
+                        this.deleteSelectedPoint();
+                        break;
+                    case 'Escape':
+                        e.preventDefault();
+                        // Clear selection and close any context menus
+                        this.clearSelection();
+                        break;
+                }
             }
         });
+    }
+    
+    deleteSelectedPoint() {
+        // This will be called by the main editor if it exists
+        if (window.splineEditor && window.splineEditor.deleteSelectedPoint) {
+            window.splineEditor.deleteSelectedPoint();
+        }
+    }
+    
+    clearSelection() {
+        // Remove any context menus
+        const contextMenu = document.getElementById('contextMenu');
+        if (contextMenu) {
+            contextMenu.remove();
+        }
+        
+        // Clear selection if spline editor exists
+        if (window.splineEditor && window.splineEditor.clearSelection) {
+            window.splineEditor.clearSelection();
+        } else {
+            this.showNotification('Selection cleared');
+        }
     }
     
     setupResponsiveBehavior() {

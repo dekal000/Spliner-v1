@@ -61,8 +61,15 @@ class SplineEditor {
         
         // UI button events
         document.getElementById('clearBtn').addEventListener('click', () => {
+            // Remove any existing context menu
+            const existingMenu = document.getElementById('contextMenu');
+            if (existingMenu) {
+                existingMenu.remove();
+            }
+            
             this.splineRenderer.clearPoints();
             this.uiManager.updatePointCount(0);
+            this.uiManager.showNotification('All points cleared', 'info', 2000);
             this.render();
         });
         
@@ -96,16 +103,37 @@ class SplineEditor {
         const pointIndex = this.splineRenderer.getPointAt(this.mousePos.x, this.mousePos.y);
         
         if (pointIndex !== -1) {
+            // Select the clicked point
+            this.splineRenderer.setSelectedPoint(pointIndex);
+            
             // Start dragging existing point
             this.isDragging = true;
             this.dragPointIndex = pointIndex;
             this.canvas.style.cursor = 'grabbing';
         } else {
+            // Deselect any previously selected point
+            this.splineRenderer.setSelectedPoint(-1);
+            
             // Add new point
             this.splineRenderer.addPoint(this.mousePos.x, this.mousePos.y);
-            this.uiManager.updatePointCount(this.splineRenderer.getPointCount());
-            this.render();
+            const pointCount = this.splineRenderer.getPointCount();
+            this.uiManager.updatePointCount(pointCount);
+            
+            // Select the newly created point
+            const newPointIndex = pointCount - 1;
+            this.splineRenderer.setSelectedPoint(newPointIndex);
+            
+            // Show notification when spline becomes valid
+            if (pointCount === this.splineRenderer.minPoints) {
+                this.uiManager.showNotification(
+                    'Spline is now valid! Add more points to create complex curves.',
+                    'success',
+                    3000
+                );
+            }
         }
+        
+        this.render();
     }
     
     handleMouseMove(e) {
@@ -119,7 +147,18 @@ class SplineEditor {
         } else {
             // Check if hovering over point
             const pointIndex = this.splineRenderer.getPointAt(this.mousePos.x, this.mousePos.y);
+            const previousHovered = this.splineRenderer.getHoveredPoint();
+            
+            // Update hover state
+            this.splineRenderer.setHoveredPoint(pointIndex);
+            
+            // Update cursor
             this.canvas.style.cursor = pointIndex !== -1 ? 'grab' : 'crosshair';
+            
+            // Re-render if hover state changed
+            if (previousHovered !== pointIndex) {
+                this.render();
+            }
         }
     }
     
@@ -127,7 +166,10 @@ class SplineEditor {
         e.preventDefault();
         this.isDragging = false;
         this.dragPointIndex = -1;
-        this.canvas.style.cursor = 'crosshair';
+        
+        // Update cursor based on hover state
+        const pointIndex = this.splineRenderer.getPointAt(this.mousePos.x, this.mousePos.y);
+        this.canvas.style.cursor = pointIndex !== -1 ? 'grab' : 'crosshair';
     }
     
     handleRightClick(e) {
@@ -136,9 +178,17 @@ class SplineEditor {
         const pointIndex = this.splineRenderer.getPointAt(mousePos.x, mousePos.y);
         
         if (pointIndex !== -1) {
-            this.splineRenderer.removePoint(pointIndex);
-            this.uiManager.updatePointCount(this.splineRenderer.getPointCount());
-            this.render();
+            // Check if we can remove the point (minimum 2 points required)
+            if (this.splineRenderer.canRemovePoint()) {
+                // Show context menu
+                this.showContextMenu(e, pointIndex);
+            } else {
+                // Show notification that minimum points are required
+                this.uiManager.showNotification(
+                    `Cannot remove point. Minimum ${this.splineRenderer.minPoints} points required for a valid spline.`,
+                    'warning'
+                );
+            }
         }
     }
     
@@ -158,6 +208,75 @@ class SplineEditor {
     handleTouchEnd(e) {
         e.preventDefault();
         this.handleMouseUp({ preventDefault: () => {} });
+    }
+    
+    showContextMenu(e, pointIndex) {
+        // Remove any existing context menu
+        const existingMenu = document.getElementById('contextMenu');
+        if (existingMenu) {
+            existingMenu.remove();
+        }
+        
+        // Create context menu
+        const contextMenu = document.createElement('div');
+        contextMenu.id = 'contextMenu';
+        contextMenu.style.cssText = `
+            position: fixed;
+            left: ${e.clientX}px;
+            top: ${e.clientY}px;
+            background: #333;
+            border: 1px solid #555;
+            border-radius: 6px;
+            padding: 8px 0;
+            z-index: 1000;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+            min-width: 150px;
+        `;
+        
+        // Create delete option
+        const deleteOption = document.createElement('div');
+        deleteOption.textContent = `Delete Point ${pointIndex}`;
+        deleteOption.style.cssText = `
+            padding: 8px 16px;
+            color: #e0e0e0;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.2s;
+        `;
+        
+        deleteOption.addEventListener('mouseenter', () => {
+            deleteOption.style.backgroundColor = '#ef4444';
+        });
+        
+        deleteOption.addEventListener('mouseleave', () => {
+            deleteOption.style.backgroundColor = 'transparent';
+        });
+        
+        deleteOption.addEventListener('click', () => {
+            const success = this.splineRenderer.removePoint(pointIndex);
+            if (success) {
+                this.uiManager.updatePointCount(this.splineRenderer.getPointCount());
+                this.uiManager.showNotification(`Point ${pointIndex} deleted`, 'success', 2000);
+                this.render();
+            }
+            contextMenu.remove();
+        });
+        
+        contextMenu.appendChild(deleteOption);
+        document.body.appendChild(contextMenu);
+        
+        // Close context menu when clicking elsewhere
+        const closeMenu = (event) => {
+            if (!contextMenu.contains(event.target)) {
+                contextMenu.remove();
+                document.removeEventListener('click', closeMenu);
+            }
+        };
+        
+        // Delay adding the click listener to prevent immediate closure
+        setTimeout(() => {
+            document.addEventListener('click', closeMenu);
+        }, 10);
     }
     
     render() {
@@ -198,6 +317,40 @@ class SplineEditor {
         requestAnimationFrame(() => this.animate());
     }
     
+    deleteSelectedPoint() {
+        const selectedIndex = this.splineRenderer.getSelectedPoint();
+        if (selectedIndex !== -1) {
+            if (this.splineRenderer.canRemovePoint()) {
+                const success = this.splineRenderer.removePoint(selectedIndex);
+                if (success) {
+                    this.uiManager.updatePointCount(this.splineRenderer.getPointCount());
+                    this.uiManager.showNotification(`Point ${selectedIndex} deleted`, 'success', 2000);
+                    this.render();
+                }
+            } else {
+                this.uiManager.showNotification(
+                    `Cannot remove point. Minimum ${this.splineRenderer.minPoints} points required for a valid spline.`,
+                    'warning'
+                );
+            }
+        } else {
+            this.uiManager.showNotification('No point selected', 'info', 1500);
+        }
+    }
+    
+    clearSelection() {
+        // Remove any context menus
+        const contextMenu = document.getElementById('contextMenu');
+        if (contextMenu) {
+            contextMenu.remove();
+        }
+        
+        // Clear selection
+        this.splineRenderer.setSelectedPoint(-1);
+        this.render();
+        this.uiManager.showNotification('Selection cleared', 'info', 1500);
+    }
+    
     exportSpline() {
         const points = this.splineRenderer.getPoints();
         const splineData = {
@@ -225,5 +378,5 @@ class SplineEditor {
 
 // Initialize the spline editor when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-    new SplineEditor();
+    window.splineEditor = new SplineEditor();
 }); 
